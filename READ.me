@@ -1,0 +1,76 @@
+■本ソースコードを手動でイメージにアップするbuildコマンド
+docker build -f Dockerfile.[PROJECT_NAME] -t gcr.io/[GCP_PROJECT_ID]/[SERVICE]/[APPLI_NAME]/[ENV]/[SERVER_CODE]:[TAG] .
+docker push gcr.io/[GCP_PROJECT_ID]/[SERVICE]/[APPLI_NAME]/[ENV]/[SERVER_CODE]:[TAG]
+
+Sample dev)
+$ gcloud config set project learnlearn-208609
+$ docker build -f Dockerfile.learnlearn -t gcr.io/learnlearn-208609/hmt/logging-jobs/dev/svc:latest .
+$ docker push gcr.io/learnlearn-208609/hmt/logging-jobs/dev/svc:latest 
+
+Sample prd)
+$ gcloud config set project bwing-230309
+$ docker build -f Dockerfile.bwing -t gcr.io/bwing-230309/hmt/logging-jobs/prd/svc:latest .
+$ docker push gcr.io/bwing-230309/hmt/logging-jobs/prd/svc:latest 
+
+
+■Cloud-run jobsをコマンドで作成する場合のコマンド
+※--args→コマンド引数になる::仕様に従った指定を行う=/src/config/config.goのLiteralを参照
+gcloud beta run jobs create [JOB_NAME] \
+  --image [IMAGE_URL] \
+  --args=[frequency:FREQUENCY] \
+	--args=[content:CONTENTS_NAME] \
+  :
+  :
+  --tasks [TASK_QRY] \
+  --max-retries 3 \
+  --region asia-northeast1
+
+
+■Cloud-run jobをCloudSchedulerで実行させるコマンド
+create cloud scheduler
+
+gcloud scheduler jobs create http [SCHEDULER_NAME] \
+  --location [SCHEDULER_REGION] \
+  --schedule="[CRON SCHEDULE]" \
+  --uri="https://[CLOUD_RUN_REGION]-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/[PROJECT_ID]/jobs/[CLOUD_RUN_JOBS_NAME]:run" \
+  --http-method POST \
+  --oauth-service-account-email [SERVICE_ACCOUNT_PRINCIPAL]
+
+
+Sample)
+gcloud scheduler jobs create http gyroscope_svc-uploader \
+  --location asia-east1 \
+  --schedule="7 */1 * * *" \
+  --uri="https://asia-east1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/learnlearn-208609/jobs/svc-uploader:run" \
+  --http-method POST \
+  --oauth-service-account-email logging-workflow@learnlearn-208609.iam.gserviceaccount.com
+
+
+■新しくコンテントを追加するに必要な内容
+1.コメント「/////【【【コンテント追加時に必須追加】】】/////」がある箇所への追記
+  ※追記内容は、既存を流用
+  ・src/config.config.go
+  ・src/jobs/args/argsData.go 
+  ・src/jobs/jobsExecute.go
+
+2.コンテント処理goファイルを追加
+  ※追加処理は、既存を流用
+  2-1. bigquery
+    ・src/bigquery/[ContentName]Import.go
+    ・src/bigquery/load2Bq[ContentName].go
+  2-2. gcs 
+    ・src/gcs/bucket/[ContentName]Import.go
+    ・src/extract/[ContentName].go
+  2-3.jobs
+  ・src/jobs/args/[ContentName].go
+
+3.デバッグ用にパラメーターを追加
+  .vscode/launch.jsonのcontentsの最後尾に追記
+      "args": [
+        :
+        "contents:flight_record,,, [contents_name]",
+        :
+      ],
+4.CloudRunJobsを編集
+  4-1.上記3と同様の値をCloudRun Jobsのコマンドライン引数に設定
+  4-2.タスク数を追加する

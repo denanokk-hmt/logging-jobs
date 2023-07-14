@@ -1,0 +1,47 @@
+ 
+##############[Build stage]##############
+FROM golang:1.19.4-alpine AS builder
+
+# Set golang environment
+ENV GO111MODULE=on \
+    GOPATH=  \
+    CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64
+
+#install SSL certification
+RUN apk add --update --no-cache ca-certificates git
+
+#worker dir
+WORKDIR /app
+
+#go modules
+COPY go.mod ./
+COPY go.sum ./
+RUN go mod download
+
+#appli building
+COPY . ./
+RUN CGO_ENABLED=0 go build -o /app/bin/logging-jobs /app/cmd/main.go
+
+##############[Run stage]##############
+FROM alpine
+
+# Set fallback mount directory
+ENV MNT_EVENTS_LOG_DIR /mnt/gyroscope/events
+ENV FILESTORE_IP_ADDRESS 172.28.80.122
+ENV FILE_SHARE_NAME prd3_shared
+
+WORKDIR /app
+
+#appli building
+COPY --from=builder /app/bin/logging-jobs /app/bin/logging-jobs
+COPY --from=builder /app/run.sh /app/run.sh
+
+#install nfs
+RUN apk add nfs-utils
+
+#execute bash for mount nfs
+RUN apk update && apk add bash
+RUN chmod +x /app/run.sh
+CMD ["/app/run.sh"]
